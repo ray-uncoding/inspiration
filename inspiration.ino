@@ -1,7 +1,7 @@
 #include <Adafruit_NeoPixel.h>
 #define MONITOR_BAUDRATE 921600
 
-#define LED_PIN 9
+#define LED_PIN 11
 #define NUM_UNITS 4                                                     // 單元數量
 #define NUM_LEDS_PER_UNIT 64                                            // 每個單元的LED數量
 #define NUM_LEDS_TOTAL (NUM_UNITS * NUM_LEDS_PER_UNIT)                  // 總LED數量
