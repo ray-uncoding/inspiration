@@ -1,4 +1,5 @@
 #include <Adafruit_NeoPixel.h>
+#include "HC_SR.h"
 #define MONITOR_BAUDRATE 921600
 
 #define LED_PIN 11
@@ -6,64 +7,73 @@
 #define NUM_LEDS_PER_UNIT 64                                            // 每個單元的LED數量
 #define NUM_LEDS_TOTAL (NUM_UNITS * NUM_LEDS_PER_UNIT)                  // 總LED數量
 Adafruit_NeoPixel leds(NUM_LEDS_TOTAL, LED_PIN, NEO_GRB + NEO_KHZ800);  //  定義ws2812燈條
+float client_RGB[3] = {128.50, 255.50, 74.22};
 
-/*------rgb變數-------*/
-float client_Bright = 0.500;   //亮度
-float brightIntervel = 0.04;  //亮度變化速度
-int client_chang = 1;         //亮度變化方向, +-1
-/*------系統變數------*/
 unsigned long previousMillis = 0;
 const int interval = 50;
 
-float client_RGB[3] = { 255.00, 71.00, 34.00 };
-float center_RGB[3] = { 200.00, 100.00, 20.00 };
+/*
+  B(7, 0)   D(0, 0)
+  A(7, 7)   C(0, 7)
+*/
+int center_X_Y[4][2] = { //ABCD
+  { 7, 7 }, { 7, 0 }, 
+  { 0, 7 }, { 0, 0 } 
+};
 
-int center_X_Y[4][2] = { {0, 7}, {0, 0}, {7, 7}, {7, 0} };
+HCsr HCsr_x(12, 13);
+HCsr HCsr_y(10, 11);
+HCsr HCsr_z(8, 9);
+
+float sensor_x = 0;
+float sensor_y = 0;
+float L = 8; 
 
 void setup() {
-  /*------系統設定-------*/
   Serial.begin(MONITOR_BAUDRATE);
   leds.begin();
 }
 
 void loop() {
-  /*------刷新系統變數-------*/
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= interval) {
     previousMillis = currentMillis;
-    for(int unit = 0; unit < NUM_UNITS; unit++){
-
-      for(int y= 0; y<8; y++){
-        for(int x = 0 ; x < 8; x++){
-          float X_Y_distence =  sqrt( sq(x * 1.00 - center_X_Y[unit][0] * 1.00 ) + sq(y * 1.00 - center_X_Y[unit][1] * 1.00));
-          float bright = exp(-X_Y_distence);
-          if(bright < 0.005) bright = 0.00;
-          if(bright > 1.00) bright = 1.00;        
-          leds.setPixelColor( (x + y*8 + unit*64), bright * client_RGB[0], bright * client_RGB[1], bright * client_RGB[2]);
-          if(x == center_X_Y[unit][0]){
-            if(y == center_X_Y[unit][1]){
-              leds.setPixelColor(x + y*8 + unit*64, bright * center_RGB[0], bright * center_RGB[1], bright * center_RGB[2]);
-            }
-          }
-
-          leds.show();
-          Serial.print(x);
-          Serial.print(", ");
-          Serial.println(y);
-          //delay(5);    
-        }
-      }
-      leds.show();
-      Serial.println("test!");
-    }
+    map_function();
+    leds.show();
   }
-  Serial.println(previousMillis);
-  delay(2000);
 }
 
-void refreshBright() {
-  for (int i = 0; i < NUM_LEDS_PER_UNIT; i++) {
-    leds.setPixelColor(i, client_Bright * client_RGB[0], client_Bright * client_RGB[1], client_Bright * client_RGB[2]);
+void map_function() {
+
+  float sensor_deta[3];   //每個感測器感測到的公分距離傳換成LED MAP的座標
+  sensor_deta[0] = (L - HCsr_x.read(2)) * 8 / L;
+  sensor_deta[1] = (L - HCsr_y.read(2)) * 8 / L;
+  sensor_deta[2] = (L - HCsr_z.read(2)) * 8 / L;
+
+  for(int i = 0; i<3; i++){
+    sensor_deta[i] = constrain(sensor_deta[i], -L, L);
   }
-  leds.show();
+
+  for (int unit = 0; unit < NUM_UNITS; unit++) {
+    for (int y = 0; y < 8; y++) {
+      for (int x = 0; x < 8; x++) {
+
+        //當前分析位置在LED MAP的座標
+        float relativeX = x - center_X_Y[unit][0];
+        float relativeY = y - center_X_Y[unit][1];
+
+        //LED map上的光源強度公式
+        float X_Y_distance = distance_calculate(relativeX, relativeY, sensor_deta[0], sensor_deta[1]);
+        float a = map(sensor_deta[2] , -L, L, 0.8, 0.5);
+        float bright = exp(- X_Y_distance * a);
+        bright = constrain(bright, 0.00, 1.0);
+
+        leds.setPixelColor((x + y * 8 + unit * 64), bright * client_RGB[0], bright * client_RGB[1], bright * client_RGB[2]);
+      }
+    }
+  }
+}
+
+float distance_calculate(float x, float y, float Ox, float Oy){
+  return sqrt(sq(x - Ox) + sq(y - Oy));
 }
